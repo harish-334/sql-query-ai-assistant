@@ -5,6 +5,8 @@ import csv
 from pathlib import Path
 import time
 
+from utils import get_db_url
+
 
 STAGING_CREATE_SQL = """
 -- Drop existing tables if they exist (in correct order due to foreign keys)
@@ -378,17 +380,6 @@ def build_facts(conn):
     conn.commit()
     cur.close()
     print("Fact tables populated")
-
-def get_db_url():
-    POSTGRES_USERNAME = os.environ.get("POSTGRES_USERNAME")
-    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD")
-    POSTGRES_SERVER = os.environ.get("POSTGRES_SERVER")
-    POSTGRES_DATABASE = os.environ.get("POSTGRES_DATABASE")
-
-    DATABASE_URL = f"postgresql://{POSTGRES_USERNAME}:{POSTGRES_PASSWORD}@{POSTGRES_SERVER}/{POSTGRES_DATABASE}"
-
-    return DATABASE_URL
-
 
 
 # Main execution

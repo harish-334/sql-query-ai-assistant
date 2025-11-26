@@ -4,6 +4,7 @@ import pandas as pd
 import psycopg2
 from dotenv import load_dotenv
 from openai import OpenAI
+import google.generativeai as genai
 import os
 import bcrypt
 
@@ -12,7 +13,6 @@ load_dotenv()  # reads variables from a .env file and sets them in os.environ
 
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 HASHED_PASSWORD = st.secrets["HASHED_PASSWORD"].encode("utf-8")
-
 
 # Database schema for context
 DATABASE_SCHEMA = """
@@ -70,7 +70,6 @@ IMPORTANT NOTES:
 """
 
 
-
 def login_screen():
     """Display login screen and authenticate user."""
     st.title("🔐 Secure Login")
@@ -105,7 +104,6 @@ def login_screen():
     - You will remain logged in until you close the browser or click logout
     """)
 
-
 def require_login():
     """Enforce login before showing main app."""
     if "logged_in" not in st.session_state or not st.session_state.logged_in:
@@ -124,7 +122,6 @@ def get_db_url():
     return DATABASE_URL
 
 DATABASE_URL = get_db_url()
-
 
 @st.cache_resource
 def get_db_connection():
@@ -149,20 +146,21 @@ def run_query(sql):
     except Exception as e:
         st.error(f"Error executing query: {e}")
         return None 
-    
 
+# used gemini
 @st.cache_resource
 def get_openai_client():
-    """Create and cache OpenAI client."""
-    return OpenAI(api_key=OPENAI_API_KEY)
+    """Create and cache Gemini model (we reuse OPENAI_API_KEY for Gemini)."""
+    genai.configure(api_key=OPENAI_API_KEY)
+    # You can switch to "gemini-1.0-pro" if you want
+    return genai.GenerativeModel("models/gemini-flash-latest")
 
 def extract_sql_from_response(response_text):
     clean_sql = re.sub(r"^```sql\s*|\s*```$", "", response_text, flags=re.IGNORECASE | re.MULTILINE).strip()
     return clean_sql
 
-
 def generate_sql_with_gpt(user_question):
-    client = get_openai_client()
+    model = get_openai_client()
     prompt = f"""You are a PostgreSQL expert. Given the following database schema and a user's question, generate a valid PostgreSQL query.
 
 {DATABASE_SCHEMA}
@@ -181,22 +179,14 @@ Requirements:
 Generate the SQL query:"""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a PostgreSQL expert who generates accurate SQL queries based on natural language questions."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=1000
-        )
-        
-        sql_query = extract_sql_from_response(response.choices[0].message.content)
+        # Call Gemini instead of OpenAI
+        response = model.generate_content(prompt)
+        sql_query = extract_sql_from_response(response.text)
         return sql_query
-    
+
     except Exception as e:
-        st.error(f"Error calling OpenAI API: {e}")
-        return None, None
+        st.error(f"Error calling Gemini API: {e}")
+        return None
 
 def main():
     require_login()
@@ -204,16 +194,24 @@ def main():
     st.markdown("Ask questions in natural language, and I will generate SQL queries for you to review and run!")
     st.markdown("---")
 
-
     st.sidebar.title("💡 Example Questions")
     st.sidebar.markdown("""
     Try asking questions like:
                         
     **Demographics:**
     - How many patients do we have by gender?
-                        
+    - What is the average age by gender?
+
     **Admissions:**
-    - What is the average length of stay?                      
+    - What is the average length of stay?
+    - Which 10 patients have the most admissions?
+
+    **Labs:**
+    - What are the top 10 most common lab tests?
+    - Show all labs for patient 1A8791E3-A61C-455A-8DEE-763EB90C9B2C
+    - What is the average value of METABOLIC: SODIUM?
+    - Show the most recent lab for each patient.
+    - Show lab trends for METABOLIC: GLUCOSE over time.                  
     """)
     st.sidebar.markdown("---")
     st.sidebar.info("""
@@ -237,7 +235,6 @@ def main():
         st.session_state.generated_sql = None
     if 'current_question' not in st.session_state:
         st.session_state.current_question = None
-
 
     # main input
 
@@ -265,7 +262,6 @@ def main():
             st.session_state.generated_sql = None
             st.session_state.current_question = None
             
-
 
         with st.spinner("🧠 AI is thinking and generating SQL..."):
             sql_query = generate_sql_with_gpt(user_question)
@@ -305,7 +301,6 @@ def main():
                     st.success(f"✅ Query returned {len(df)} rows")
                     st.dataframe(df, width="stretch")
 
-
     if st.session_state.query_history:
         st.markdown('---')
         st.subheader("📜 Query History")
@@ -318,7 +313,6 @@ def main():
                     df = run_query(item["sql"])
                     if df is not None:
                         st.dataframe(df, width="stretch")
-
 
 if __name__ == "__main__":
     main()

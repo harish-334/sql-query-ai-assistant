@@ -177,4 +177,5 @@ pyrightconfig.json
 
 .env
 .streamlit
+*.toml
 secrets.toml 

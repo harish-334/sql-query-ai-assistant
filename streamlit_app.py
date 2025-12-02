@@ -263,7 +263,19 @@ def extract_sql_from_response(response_text):
 
 def generate_sql_with_gpt(user_question):
     model = get_openai_client()
-    prompt = f"""You are a PostgreSQL expert. Given the following database schema and a user's question, generate a valid PostgreSQL query.
+    prompt = f"""You are a PostgreSQL expert. Given the following database schema and a user's question, generate a valid PostgreSQL query. 
+    VERY IMPORTANT RULES (ALWAYS FOLLOW THESE):
+    1. ALWAYS wrap table names and column names in double quotes.
+        Example: SELECT "CustomerID" FROM "Customer"
+    2. PostgreSQL folds unquoted identifiers to lowercase — so ALWAYS use double quotes.
+    3. The query MUST be executable directly in PostgreSQL.
+    4. If the question relates to e-commerce (Customer, Product, OrderDetail, Region, Country, ProductCategory):
+          - Use the exact table names: "Customer", "Product", "OrderDetail", "Region", "Country", "ProductCategory".
+    5. If the question relates to patient data:
+          - Use the exact table names: "patients", "admissions", "admission_lab_results", etc.
+    6. Use JOINs properly based on the schema relationships.
+    7. If many rows may return, add LIMIT 100 unless user specifies otherwise.
+    8. Return ONLY the SQL query — no explanation.
 
 {DATABASE_SCHEMA}
 
@@ -450,3 +462,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

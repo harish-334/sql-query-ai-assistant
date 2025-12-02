@@ -341,7 +341,7 @@ def main():
 
     **🧑‍💼 Customers:**
     - Show the top 10 customers by total spending.
-    - List customers from 'United States' living in 'New York'.
+    - List customers from 'USA'.
     - Count customers by country.
 
     **📦 Products & Categories:**
@@ -462,4 +462,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

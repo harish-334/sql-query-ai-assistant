@@ -7,6 +7,7 @@ from openai import OpenAI
 import google.generativeai as genai
 import os
 import bcrypt
+from sqlalchemy import create_engine
 
 
 load_dotenv()  # reads variables from a .env file and sets them in os.environ
@@ -61,6 +62,48 @@ CORE TABLES:
     lab_datetime TIMESTAMP
   )
 
+- Region (
+    RegionID BIGINT,
+    Region TEXT
+  )
+
+- Country (
+    CountryID BIGINT,
+    Country TEXT,
+    RegionID BIGINT (FK to Region)
+  )
+
+- Customer (
+    CustomerID BIGINT,
+    FirstName TEXT,
+    LastName TEXT,
+    Address TEXT,
+    City TEXT,
+    CountryID BIGINT (FK to Country)
+  )
+
+- ProductCategory (
+    ProductCategoryID BIGINT,
+    ProductCategory TEXT,
+    ProductCategoryDescription TEXT
+  )
+
+- Product (
+    ProductID BIGINT,
+    ProductName TEXT,
+    ProductUnitPrice DOUBLE PRECISION,
+    ProductCategoryID BIGINT (FK to ProductCategory)
+  )
+
+- OrderDetail (
+    OrderID BIGINT,
+    CustomerID BIGINT (FK to Customer),
+    ProductID BIGINT (FK to Product),
+    OrderDate TEXT,
+    QuantityOrdered BIGINT
+  )
+
+
 IMPORTANT NOTES:
 - Use JOINs to get descriptive values from lookup tables
 - patient_dob, admission_start, admission_end, and lab_datetime are TIMESTAMP types
@@ -110,6 +153,7 @@ def require_login():
         login_screen()
         st.stop()
 
+
 @st.cache_resource
 def get_db_url():
     POSTGRES_USERNAME = st.secrets["POSTGRES_USERNAME"]
@@ -123,6 +167,27 @@ def get_db_url():
 
 DATABASE_URL = get_db_url()
 
+#NEW
+# -------------------------------------------------------------
+# -------------------------------------------------------------
+USE_SQLITE = os.getenv("USE_SQLITE", "0") == "1" or os.path.exists("normalized.db")
+
+def get_sqlite_engine(sqlite_path="normalized.db"):
+    sqlite_abs = os.path.abspath(sqlite_path)
+    return create_engine(f"sqlite:///{sqlite_abs}", connect_args={"check_same_thread": False})
+
+def get_postgres_engine():
+    try:
+        return create_engine(DATABASE_URL)
+    except Exception as e:
+        try:
+            st.error(f"Error creating Postgres engine: {e}")
+        except:
+            print(f"Error creating Postgres engine: {e}")
+        return None
+# -------------------------------------------------------------
+# -------------------------------------------------------------
+
 @st.cache_resource
 def get_db_connection():
 
@@ -133,19 +198,56 @@ def get_db_connection():
     except Exception as e:
         st.error(f"Failed to connect to database: {e}")
         return None
+
+
+# def run_query(sql):
+#     """Execute SQL query and return results as DataFrame."""
+#     conn = get_db_connection()
+#     if conn is None:
+#         return None
     
+#     try:
+#         df = pd.read_sql_query(sql, conn)
+#         return df
+#     except Exception as e:
+#         st.error(f"Error executing query: {e}")
+#         return None 
+
+
 def run_query(sql):
-    """Execute SQL query and return results as DataFrame."""
-    conn = get_db_connection()
-    if conn is None:
-        return None
-    
+    """
+    Execute SQL query and return results as a pandas DataFrame.
+    Uses normalized.db (SQLite) if present; otherwise uses Postgres.
+    """
     try:
-        df = pd.read_sql_query(sql, conn)
-        return df
+        # ---- If normalized.db exists, use SQLite via SQLAlchemy ----
+        if os.path.exists("normalized.db"):
+            engine = get_sqlite_engine("normalized.db")
+            df = pd.read_sql_query(sql, con=engine)
+            return df
+
+        # ---- Fallback: use existing Postgres DB connection ----
+        conn = get_db_connection()
+        if conn is None:
+            st.error("❌ Could not connect to Postgres database.")
+            return None
+
+        # pandas supports DB-API connections; try it first
+        try:
+            df = pd.read_sql_query(sql, con=conn)
+            return df
+        except Exception:
+            # If that fails, create an SQLAlchemy engine for Postgres and retry
+            engine = get_postgres_engine()
+            if engine is None:
+                st.error("❌ No database engine available.")
+                return None
+            df = pd.read_sql_query(sql, con=engine)
+            return df
+
     except Exception as e:
         st.error(f"Error executing query: {e}")
-        return None 
+        return None
 
 # used gemini
 @st.cache_resource
@@ -197,35 +299,67 @@ def main():
     st.sidebar.title("💡 Example Questions")
     st.sidebar.markdown("""
     Try asking questions like:
-                        
-    **Demographics:**
+
+    **🧍 Patient Demographics:**
     - How many patients do we have by gender?
     - What is the average age by gender?
+    - Show the count of patients by race.
+    - What is the average poverty percentage by language?
 
-    **Admissions:**
+    **🏥 Admissions & Diagnosis:**
     - What is the average length of stay?
     - Which 10 patients have the most admissions?
+    - Show patients with their primary diagnosis description.
+    - List admissions per month for the last year.
 
-    **Labs:**
+    **🧪 Lab Results:**
     - What are the top 10 most common lab tests?
     - Show all labs for patient 1A8791E3-A61C-455A-8DEE-763EB90C9B2C
     - What is the average value of METABOLIC: SODIUM?
     - Show the most recent lab for each patient.
-    - Show lab trends for METABOLIC: GLUCOSE over time.                  
-    """)
-    st.sidebar.markdown("---")
-    st.sidebar.info("""
-        🩼**How it works:**
-        1. Enter your question in plain English
-        2. AI generates SQL query
-        3. Review and optionally edit the query
-        4. Click "Run Query" to execute           
+    - Show lab trends for METABOLIC: GLUCOSE over time.
+
+    ---
+
+    ### 🛒 E-Commerce / Normalized DB (Region, Country, Customer, Product, Orders)
+
+    **🌍 Region & Country:**
+    - How many countries are in each region?
+    - List all regions with number of customers.
+
+    **🧑‍💼 Customers:**
+    - Show the top 10 customers by total spending.
+    - List customers from 'United States' living in 'New York'.
+    - Count customers by country.
+
+    **📦 Products & Categories:**
+    - What are the top 10 most expensive products?
+    - Show product categories with product counts.
+    - List all products under 'Beverages'.
+
+    **🧾 Orders / Sales:**
+    - Show total quantity ordered per product.
+    - Find the top 10 customers by order quantity.
+    - Show total revenue per product category.
+    - Show daily sales trends.
+    - Which product category generates the highest revenue?
+
     """)
 
     st.sidebar.markdown("---")
-    if st.sidebar.button("🚪Logout"):
+    st.sidebar.info("""
+    🧠 **How it works:**
+    1. Enter your question in plain English  
+    2. AI generates SQL query  
+    3. Review or edit the SQL  
+    4. Click "Run Query" to execute  
+    """)
+
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 Logout"):
         st.session_state.logged_in = False
         st.rerun()
+
 
     # Init state
 
@@ -306,9 +440,9 @@ def main():
         st.subheader("📜 Query History")
         for idx, item in enumerate(reversed(st.session_state.query_history[-5:])):
             with st.expander(f"Query {len(st.session_state.query_history)-idx}: {item['question'][:60]}..."):
-                st.markdown(f"**Question:** {item["question"]}")
+                st.markdown(f"**Question:** {item['question']}")
                 st.code(item["sql"], language="sql")
-                st.caption(f"Returned {item["rows"]} rows")
+                st.caption(f"Returned {item['rows']} rows")
                 if st.button(f"Re-run this query", key=f"rerun_{idx}"):
                     df = run_query(item["sql"])
                     if df is not None:

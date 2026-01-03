@@ -158,3 +158,6 @@ Free for educational and academic use.
 📩 harishsondagar3@gmail.com | harishha@buffalo.edu
 
 ---
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/af049c9a-f7fa-47cd-997f-019ddea555a0" />
+
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/af33e5e3-7982-4a05-84cd-9dc22720fe35" />
